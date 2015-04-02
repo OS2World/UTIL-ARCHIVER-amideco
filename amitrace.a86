@@ -1,0 +1,790 @@
+;
+;  27.03.1998 Veit Kannegieser
+;
+;
+;geschwindigkeit0                equ 1   ;
+geschwindigkeit1               equ 1   ; CS:IP, DS:SI, ES:DI
+;geschwindigkeit2               equ 1   ; CS:IP, DS:SI, ES:DI, Zeilenumbruch
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+segment_korrektur               macro
+                                  mov ax,#1
+                                  cmp ax,0e000
+                                  if ae sub ax,(0e000-08000)
+				  cmp ax,00000
+				  if e mov ax,07000
+                                  mov #1,ax
+                                #em
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ                                
+_clc                            macro
+                                  and _flags,0ffff-00001 ; Bit 0
+                                #em
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+_stc                            macro
+                                  or _flags,00001        ; Bit 0
+                                #em
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+_clearz                         macro
+                                  and _flags,0ffff-00040 ; Bit 6
+                                #em
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+_setz                           macro
+                                  or _flags,00040        ; Bit 6
+                                #em
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+trace                           equ 1*4
+
+pause                           macro
+                                  push ax,dx
+                                    mov dx,text_pause
+                                    call ausschrift_text
+                                    mov ax,0
+                                    int 016
+                                    call ausschrift_umbruch
+                                  pop dx,ax
+                                #em
+
+;ÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ
+
+				mov ah,009
+				mov dx,titel
+				int 021
+                                
+
+                                mov sp,stacke_ende
+                                
+                                mov ax,cs
+                                add ax,stacke_ende/16
+                                cmp ax,01000
+                                ja speicherproblem
+
+                                cmp [00002],09ffe
+                                jae kein_speicherproblem
+
+speicherproblem:
+                                mov dx,text_speicherproblem
+                                call ausschrift_text
+                                mov ax,04c08
+                                int 021
+
+kein_speicherproblem:
+
+                                push 09000
+                                pop ds
+
+                                mov si,0ffe0
+                                mov di,mcb_sicherung
+                                mov cx,2*010
+                                cld
+                                rep movsb
+
+                                push cs
+                                pop ds
+
+                                mov si,00081
+                                cld
+suche_dateinameende:
+                                lodsb
+                                cmp al,00d
+                                jnz suche_dateinameende
+
+                                mov b [si-1],0
+
+                                mov ax,01000
+                                call fuelle_segment_ax
+
+                                mov ax,02000
+                                call fuelle_segment_ax
+                                mov ax,03000
+                                call fuelle_segment_ax
+                                mov ax,04000
+                                call fuelle_segment_ax
+                                mov ax,05000
+                                call fuelle_segment_ax
+                                mov ax,06000
+                                call fuelle_segment_ax
+                                mov ax,07000
+                                call fuelle_segment_ax
+                                mov ax,08000
+                                call fuelle_segment_ax
+                                mov ax,09000-2
+                                call fuelle_segment_ax
+
+
+				mov ax,03d00
+				mov dx,dateiname
+                                cmp b [00080],0
+                                if ne mov dx,00082
+                                int 021
+                                jnc datei_oeffnen
+
+                                mov ah,009
+                                mov dx,fehler_oeffnen
+                                int 021
+                                mov ax,04c01
+                                int 021
+
+datei_oeffnen:
+                                mov bx,ax
+
+                                mov ah,03f
+                                mov cx,08000 ; 32K
+                                mov dx,0     ; :0
+                                push 08000   ; "E000:"
+                                pop ds
+                                int 021
+
+                                mov ah,03f
+                                push 08800   ; "E800:"
+                                pop ds
+                                int 021
+
+                                mov ah,03f
+                                push 09000   ; "F000:"
+                                pop ds
+                                int 021
+
+                                mov ah,03f
+                                push 09800   ; "F800:"
+                                pop ds
+                                sub cx,2*16  ; MCB bei 9F00:0
+                                int 021
+
+                                mov ah,03e
+                                int 021
+
+
+                                ; suche ...  ( F000:E191,:E7AB,..
+                                ; be 00 e0      mov si,0e000
+                                ; 8b fe         mov es,si
+                                ; b9 00 08      mov cx,00800
+                                ; f3 66         rep movsd
+                                ; 2e a5
+                                ; 06            push es
+                                ; 68 ????       push ...
+                                ; cb            retf
+                                mov di,0e000
+                                mov cx,02000
+                                cld
+                                mov al,0be
+                                push 09000   ; "F000:"
+                                pop es
+                                jmp short suchschleife
+
+nicht_amibios:
+
+                                push cs
+                                pop ds
+                                mov ah,009
+                                mov dx,amibios_nicht_gefunden
+                                int 021
+
+                                mov ax,04c01
+                                int 021
+
+suchschleife:
+                                repnz scasb
+                                jcxz nicht_amibios
+
+                                cmp w es:[di],0e000
+                                jnz suchschleife
+
+                                cmp w es:[di+2],0fe8b
+                                jnz suchschleife
+
+                                cmp w es:[di+7],066f3
+                                jnz suchschleife
+
+                                dec di
+                                mov cs:[sprung+0],di
+
+
+                                push 0
+                                pop ds
+
+                                push w [trace+0]
+                                  push w [trace+2]
+
+                                    mov w [trace+0],int3
+                                    mov w [trace+2],cs
+
+                                    push 0f000
+                                    pop ds
+
+                                    push 0
+                                    pop es
+
+
+                                    pushf
+                                    pop ax
+                                    or ax,00100
+                                    push ax
+                                    popf
+
+                                    cli
+                                    mov cs:[stackmerker+0],sp
+                                    mov cs:[stackmerker+2],ss
+                                    sti
+
+                                    db 0ea
+sprung:
+                                    dw ?
+                                    dw 0f000
+
+stop_tracer:
+
+                                    pushf
+                                    pop ax
+                                    and ax,0ffff-00100
+                                    push ax
+                                    popf
+
+                                    cli
+                                    mov sp,cs:[stackmerker+0]
+                                    mov ss,cs:[stackmerker+2]
+                                    sti
+
+                                    mov ax,cs
+                                    mov es,ax
+
+                                  pop w [trace+2]
+                                pop w [trace+0]
+
+
+                                push cs
+                                pop ds
+
+
+                                ; ”ffnen
+                                mov ah,03c
+                                mov dx,decoder_dateiname
+                                int 021
+
+                                mov bx,ax
+
+                                ; 32K
+                                mov ah,040
+                                mov cx,08000
+                                mov dx,0
+                                push 01000
+                                pop ds
+                                int 021
+
+                                ; 32K
+                                mov ah,040
+                                mov cx,08000
+                                mov dx,0
+                                push 01800
+                                pop ds
+                                int 021
+
+                                ; schliessen
+                                mov ah,03e
+                                int 021
+
+
+                                mov bp,w cs:[segment_ausgepackt]
+                                cmp bp,0
+                                jne entpackt_gefunden
+
+suche_entpackt:
+                                add bp,01000
+                                mov ds,bp
+                                cmp b [0fff0],0ea
+                                jnz suche_entpackt
+
+entpackt_gefunden:
+
+                                push cs
+                                pop ds
+
+
+                                ; ”ffnen
+                                mov ah,03c
+                                mov dx,dump_dateiname
+                                int 021
+
+                                mov bx,ax
+
+                                ; 32K
+                                mov ah,040
+                                mov cx,08000
+                                mov dx,0
+                                push bp
+                                pop ds
+                                int 021
+
+                                ; 32K
+                                mov ah,040
+                                mov cx,08000
+                                mov dx,0
+                                add bp,00800
+                                push bp
+                                pop ds
+                                int 021
+
+                                ; schliessen
+                                mov ah,03e
+                                int 021
+
+                                push cs
+                                pop ds
+
+
+                                mov dx,text_fertig
+                                call ausschrift_text
+
+                                push 09000
+                                pop es
+
+                                mov di,0ffe0
+                                mov si,mcb_sicherung
+                                mov cx,2*010
+                                cld
+                                rep movsb
+
+                                mov ax,04c00
+                                int 021
+
+
+;ÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ
+
+                                ; pushf
+_flags                          equ w [bp+6]
+                                ; push cs
+_cs                             equ w [bp+4]
+                                ; push ip
+_ip                             equ w [bp+2]
+
+int3:
+                                push bp         ; bp+0
+
+                                  mov bp,sp
+
+                                  push ax
+                                    segment_korrektur _cs
+                                  pop ax
+
+                                  call csipdssiesdi_anzeige
+
+                                  push ds,si
+
+ip_schleife:
+
+                                    lds si,_ip
+
+                                    cmp w [si],061e4   ; in al,061
+                                    jnz nicht_in_al_061_test_al_10
+
+                                    cmp w [si+2],010a8 ; test al,010
+                                    jnz nicht_in_al_061_test_al_10
+
+                                    add _ip,2+2+2 ; jnz/...
+
+                                    cmp b [si+2+2+2],049 ; dec cx
+                                    if z and cx,00001
+                                    jmp ip_schleife
+
+nicht_in_al_061_test_al_10:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0cb ; ret far
+                                    jnz nicht_retf
+
+                                    push dx
+                                      mov dx,text_retfar
+                                      call ausschrift_text
+                                    pop dx
+
+nicht_retf:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp w [si],0090f ; 0f 09
+                                    jne nicht_wbinvd
+
+                                    push dx
+                                      mov dx,text_wbinvd
+                                      call ausschrift_text
+                                    pop dx
+                                    inc _ip,2
+                                    jmp ip_schleife
+nicht_wbinvd:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0e4 ; in al,[0bb]
+                                    jne nicht_in_al_bb
+                                    push dx,ax
+                                      mov dx,text_in_al_
+                                      call ausschrift_text
+                                      mov al,b [si+1]
+                                      call ausschrift_byte
+                                      call ausschrift_umbruch
+                                    pop ax,dx
+                                    inc _ip,2
+                                    jmp ip_schleife
+nicht_in_al_bb:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0e5 ; in ax,[0bb]
+                                    jne nicht_in_ax_bb
+
+                                    push dx,ax
+                                      mov dx,text_in_ax_
+                                      call ausschrift_text
+                                      mov al,b [si+1]
+                                      call ausschrift_byte
+                                      call ausschrift_umbruch
+                                    pop ax,dx
+                                    inc _ip,2
+                                    jmp ip_schleife
+nicht_in_ax_bb:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0e6 ; out [0bb],al
+                                    jne nicht_out_bb_al
+
+                                    push dx,ax
+                                      mov dx,text_out
+                                      call ausschrift_text
+                                      mov al,b [si+1]
+                                      call ausschrift_byte
+                                      mov dx,text_komma_al
+                                      call ausschrift_text
+                                    pop ax,dx
+                                    call ausschrift_byte
+                                    call ausschrift_umbruch
+                                    inc _ip,2
+                                    jmp ip_schleife
+nicht_out_bb_al:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0e7 ; out [0bb],ax
+                                    jne nicht_out_bb_ax
+
+                                    push dx,ax
+                                      mov dx,text_out
+                                      call ausschrift_text
+                                      mov al,b [si+1]
+                                      call ausschrift_byte
+                                      mov dx,text_komma_ax
+                                      call ausschrift_text
+                                    pop ax,dx
+                                    call ausschrift_word
+                                    call ausschrift_umbruch
+                                    inc _ip,2
+                                    jmp ip_schleife
+nicht_out_bb_ax:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0ec ; in al,dx
+                                    jne nicht_in_al_dx
+
+                                    push dx
+                                      mov dx,text_in_al_dx
+                                      call ausschrift_text
+                                    pop dx
+                                    push ax
+                                      mov ax,dx
+                                      call ausschrift_word
+                                    pop ax
+                                    call ausschrift_umbruch
+                                    inc _ip,1
+                                    jmp ip_schleife
+nicht_in_al_dx:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0ed ; in ax,dx
+                                    jne nicht_in_ax_dx
+
+                                    push dx
+                                      mov dx,text_in_al_dx
+                                      call ausschrift_text
+                                    pop dx
+                                    push ax
+                                      mov ax,dx
+                                      call ausschrift_word
+                                    pop ax
+                                    call ausschrift_umbruch
+                                    inc _ip,1
+                                    jmp ip_schleife
+nicht_in_ax_dx:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0ee ; out dx,al
+                                    jne nicht_out_dx_al
+
+                                    push dx
+                                      mov dx,text_out_dx_al
+                                      call ausschrift_text
+                                    pop dx
+                                    push ax
+                                      mov ax,dx
+                                      call ausschrift_word
+                                    pop ax
+                                    call ausschrift_umbruch
+                                    inc _ip,1
+                                    jmp ip_schleife
+nicht_out_dx_al:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    cmp b [si],0ef ; out dx,ax
+                                    jne nicht_out_dx_ax
+
+                                    push dx
+                                      mov dx,text_out_dx_ax
+                                      call ausschrift_text
+                                    pop dx
+                                    push ax
+                                      mov ax,dx
+                                      call ausschrift_word
+                                    pop ax
+                                    call ausschrift_umbruch
+                                    inc _ip,1
+                                    jmp ip_schleife
+nicht_out_dx_ax:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+                                    jmp short nop0
+
+nop4:                               mov b ds:[si+3],090
+nop3:                               mov b ds:[si+2],090
+nop2:                               mov b ds:[si+1],090
+nop1:                               mov b ds:[si+0],090
+                                    push dx
+                                      mov dx,text_code_nop
+                                      call ausschrift_text
+                                    pop dx
+nop0:
+
+                                  pop si,ds
+
+                                  push ax
+                                    segment_korrektur ds
+                                    segment_korrektur es
+                                    segment_korrektur ss
+                                  pop ax
+                                  
+                                  cmp _ip,0017a
+                                  je stop
+
+                                  cmp _ip,0fff0
+                                  je stop
+
+                                  ; AP5C180S.ROM
+                                  cmp w ss:[0],'MA'
+                                  jne nicht_stop
+                                  cmp w ss:[2],'BI'
+                                  jne nicht_stop
+                                  cmp b ss:[8],'W'
+                                  je stop_amibiosw
+
+                                  jmp nicht_stop
+
+stop:
+
+                                  push ax,dx
+                                    mov dx,text_stopfff0
+                                    call ausschrift_text
+
+                                    pause
+
+                                    jmp stop_tracer
+
+                                  pop dx,ax
+
+stop_amibiosw:
+                                  push ax,dx
+                                    mov dx,text_stopamibiosw
+                                    call ausschrift_text
+
+                                    pause
+
+                                    mov w cs:[segment_ausgepackt],ss
+                                    jmp stop_tracer
+
+                                  pop dx,ax
+
+
+nicht_stop:
+                                  call csipdssiesdi_anzeige
+
+                                pop bp
+                                iret
+
+;ÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍÍ
+
+
+ausschrift_word:
+                                ; ax..
+                                xchg al,ah
+                                call ausschrift_byte
+                                xchg al,ah
+                                call ausschrift_byte
+                                ret
+                                
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+ausschrift_byte:
+                                ; al..
+                                push ax,dx
+                                  mov dl,al
+                                  shr dl,4
+                                  add dl,'0'
+                                  cmp dl,'9'
+                                  if a add dl,'A'-'9'-1
+                                  call zeichen
+                                  mov dl,al
+                                  and dl,00f
+                                  add dl,'0'
+                                  cmp dl,'9'
+                                  if a add dl,'A'-'9'-1
+                                  call zeichen
+                                  
+                                pop dx,ax
+
+                                ret
+                                
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+zeichen:
+                                ; dl
+                                push ax,bx
+                                  xchg al,dl
+                                  mov ah,00e
+                                  mov bx,00007
+                                  int 010
+                                  xchg al,dl
+                                pop bx,ax
+                                ret
+
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+fuelle_segment_ax:
+                                push es,cx,ax,di
+                                  push ax
+                                  pop es
+                                  mov cx,08000
+                                  mov ax,0cccc
+                                  mov di,0
+                                  cld
+                                  rep stosw
+                                pop di,ax,cx,es
+                                ret
+                                
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+ausschrift_text:
+                                push ds,si,ax
+                                  push cs
+                                  pop ds
+                                  mov si,dx
+                                  cld
+ausschrift_text_scheife:
+                                  lodsb
+                                  cmp al,'$'
+                                  je ausschrift_text_weiter
+                                  mov dl,al
+                                  call zeichen
+                                  jmp ausschrift_text_scheife
+ausschrift_text_weiter:
+                                pop ax,si,ds
+                                ret
+                                
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+csipdssiesdi_anzeige:
+
+#if geschwindigkeit0
+                                ret
+#else
+
+                                push ax,dx
+
+                                  ; Umbruch
+                                  mov dl,00d
+                                  call zeichen
+#if geschwindigkeit2
+                                  mov dl,00a
+                                  call zeichen
+#endif
+
+                                  ; CS
+                                  mov ax,_cs
+                                  call ausschrift_word
+
+                                  ; :
+                                  mov dl,':'
+                                  call zeichen
+
+                                  ; IP
+                                  mov ax,_ip
+                                  call ausschrift_word
+                                    
+                                  ; " "
+                                  mov dl,' '
+                                  call zeichen
+                                  ; DS
+                                  mov ax,ds
+                                  call ausschrift_word
+                                  ; ":"
+                                  mov dl,':'
+                                  call zeichen
+                                  ; SI
+                                  mov ax,si
+                                  call ausschrift_word
+
+                                  ; " "
+                                  mov dl,' '
+                                  call zeichen
+                                  ; ES
+                                  mov ax,es
+                                  call ausschrift_word
+                                  ; ":"
+                                  mov dl,':'
+                                  call zeichen
+                                  ; DI
+                                  mov ax,di
+                                  call ausschrift_word
+                                  ; " "
+                                  mov dl,' '
+                                  call zeichen
+
+                                pop dx,ax
+                                ret
+#endif
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+ausschrift_umbruch:
+                                push dx
+                                  mov dx,text_zeilenumbruch
+                                  call ausschrift_text
+                                pop dx
+                                ret
+                                
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+segment_ausgepackt:             dw 00000
+stackmerker:                    dd ?
+mcb_sicherung:                  db 020 dup ?
+
+dateiname:                      db '626GB14.ROM',0
+dump_dateiname:                 db 'DUMP_AMI.BIN',0
+decoder_dateiname:              db 'CODE_AMI.BIN',0
+
+titel:                          db 'AMITRACE * V.K. * 27.03úú01.04.1998',00d,00a,'$'
+text_speicherproblem:           db 'Speicher 1000:0000 ... 9ffe:0000 !!!',00d,00a,'$'
+text_pause:                     db 'Taste ...$'
+text_zeilenumbruch:             db 00d,00a,'$'
+text_fertig:                    db 'fertig',00d,00a,'$'
+text_stopfff0:                  db 'Stop [F000:FFF0]',00d,00a,'$'
+text_stopamibiosw:              db 'Stop [SS:0=AMIBIOSW]',00d,00a,'$'
+text_code_nop:                  db 'nop..$'
+text_out:                       db 'out $'
+text_in_al_:                    db 'in al,$'
+text_in_ax_:                    db 'in ax,$'
+text_komma_al:                  db ',al  $'
+text_komma_ax:                  db ',ax  $'
+text_komma:                     db ',$'
+text_in_al_dx:                  db 'in al,dx  $'
+text_in_ax_dx:                  db 'in ax,dx  $'
+text_out_dx_al:                 db 'out dx,al  $'
+text_out_dx_ax:                 db 'out dx,ax  $'
+text_retfar:                    db 'retf',00d,00a,'$'
+text_wbinvd:                    db 'wbinvd',00d,00a,'$'
+amibios_nicht_gefunden:         db 'AMIBIOS NICHT GEFUNDEN',00d,00a,'$'
+fehler_oeffnen:                 db 'Fehler beim ”ffnen der Datei',00d,00a,'$'
+
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+even 4
+                                dd 1000 dup 0cccccccc
+stacke_ende:
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ

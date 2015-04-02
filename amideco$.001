@@ -1,0 +1,27 @@
+(* nicht editieren! *)
+procedure sprach_modul;assembler;(*&FRAME-*) (*&USES NONE*) (*$S-*)
+  asm
+    db   7,'<SPRA2>'
+    db   4,'ENDE'
+    dw   8
+    db  18,'File is to large! '
+    db  34,'Die angegebene Datei ist zu lang! '
+    db  28,'Can not find source segment!'
+    db  34,'Kann das Qellsegment nicht finden!'
+    db  29,'This file is not an AMI-BIOS?'
+    db  30,'Diese Datei ist kein AMI-BIOS?'
+    db 146,'FilePos    Length Target     Type                   unpacked '
+    db     ' filename',13,10,'---------  -----  ---------  --------------'
+    db     '-----    --------  ------------'
+    db 147,'Dateipos.  L„nge  Ziel       Typ                    entpackt '
+    db     ' Dateiname',13,10,'---------  -----  ---------  -------------'
+    db     '------    --------  ------------'
+    db  29,'Not enough memory below 1 MB!'
+    db  40,'Es ist nicht genug Speicher < 1 MB frei!'
+    db  56,'usage: AMIDECO <(first) input file> [<target directory>]'
+    db  59,'Benutzung: AMIDECO <(erste) Quelldatei> [<Zielverzeichnis>]'
+    db  36,'Found a error in modules chain list!'
+    db  48,'Es ist ein Fehler in der Modulkette aufgetreten!'
+    db  27,'Error during decompression!'
+    db  22,'Fehler beim Entpacken!'
+  end;

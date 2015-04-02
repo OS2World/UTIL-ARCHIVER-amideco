@@ -1,0 +1,11 @@
+(* nicht editieren! *)
+var
+  sprach_start:longint;
+  textz_datei_ist_zu_lang  :^string;
+  textz_kann_quellsegment_nicht_finden  :^string;
+  textz_datei_ist_kein_amibios  :^string;
+  textz_kopfzeile  :^string;
+  textz_nicht_genug_speicher_im_ersten_mb  :^string;
+  textz_benutzung  :^string;
+  textz_kettenfehler  :^string;
+  textz_entpackfehler  :^string;
